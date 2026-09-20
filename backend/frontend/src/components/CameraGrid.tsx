@@ -1,77 +1,76 @@
 import React from 'react';
 import CameraCard from './CameraCard';
+import { useVideoQueue } from '../contexts/VideoQueueContext';
+import { LayoutGrid } from 'lucide-react';
 
 interface CameraGridProps {
   mode: 'VISION' | 'THERMAL' | 'DRONE';
 }
 
 const CameraGrid: React.FC<CameraGridProps> = ({ mode }) => {
-  // Configuration as requested in the prompt
-  const cameras = [
-    {
-      id: "CAM-01",
-      name: "PERIMETER GATE",
-      labels: ["PERSON", "INTRUDER", "RESTRICTED ZONE"],
-      alert: true,
-      stats: { fps: 29.9, latency: 45, people: 1, motion: true }
-    },
-    {
-      id: "CAM-02",
-      name: "CHECKPOINT NORTH",
-      labels: ["CAR", "BUS", "TRUCK"],
-      stats: { fps: 24.5, latency: 52, people: 4, vehicles: 10, motion: true }
-    },
-    {
-      id: "CAM-03",
-      name: "FENCE EAST",
-      labels: ["PERIMETER MONITORED"],
-      stats: { fps: 30.0, latency: 38, people: 0, motion: false }
-    },
-    {
-      id: "CAM-04",
-      name: "VEHICLE ACCESS",
-      labels: ["PLATE", "ANPR VERIFIED"],
-      stats: { fps: 15.2, latency: 120, people: 1, vehicles: 1, motion: true }
-    },
-    {
-      id: "CAM-05",
-      name: "NIGHT WATCH",
-      labels: ["MOTION DETECTED", "NIGHT MODE"],
-      stats: { fps: 20.0, latency: 85, people: 0, motion: true }
-    },
-    {
-      id: "CAM-06",
-      name: "THERMAL WATCHTOWER",
-      labels: mode === 'THERMAL' ? ["THERMAL PERSON DETECTED", "TEMPERATURE", "RANGE"] : ["THERMAL CAPABLE"],
-      stats: { fps: 10.5, latency: 200, people: mode === 'THERMAL' ? 2 : 0, motion: mode === 'THERMAL' }
-    }
-  ];
+  const { activeAnomalyCameraId, setActiveAnomalyCameraId, queues } = useVideoQueue();
 
+  const getPrefix = (m: string) => m === 'VISION' ? 'VIS' : m === 'THERMAL' ? 'THM' : 'DRN';
+  const prefix = getPrefix(mode);
+  
+  // Generate the 6 fixed slots for the current mode
+  const slots = Array.from({ length: 6 }).map((_, i) => `${prefix}-0${i + 1}`);
+
+  const activeQueue = queues[mode];
+
+  // If there's an anomaly, we split the layout
+  if (activeAnomalyCameraId && activeAnomalyCameraId.startsWith(prefix)) {
+    const otherSlots = slots.filter(id => id !== activeAnomalyCameraId);
+    const mainItem = activeQueue.find(i => i.assignedCameraId === activeAnomalyCameraId && i.status === 'PROCESSING');
+
+    return (
+      <div className="h-full flex flex-col relative">
+        <button 
+          onClick={() => setActiveAnomalyCameraId(null)}
+          className="absolute top-2 right-2 z-50 bg-slate-800 hover:bg-slate-700 text-white px-3 py-1.5 rounded border border-slate-600 flex items-center shadow-lg transition-colors text-sm font-semibold"
+        >
+          <LayoutGrid className="w-4 h-4 mr-2" /> RETURN TO GRID
+        </button>
+        
+        <div className="flex-1 flex flex-col xl:flex-row gap-4 h-full">
+          {/* Main expanded anomaly view */}
+          <div className="flex-[3] h-full">
+             <CameraCard 
+               cameraId={activeAnomalyCameraId} 
+               mode={mode} 
+               queueItem={mainItem}
+               isFocused={true}
+             />
+          </div>
+          {/* Sidebar thumbnails */}
+          <div className="flex-1 grid grid-cols-2 xl:grid-cols-1 gap-2 overflow-y-auto">
+            {otherSlots.map(id => (
+              <div key={id} className="h-40 xl:h-auto xl:flex-1">
+                <CameraCard 
+                  cameraId={id} 
+                  mode={mode}
+                  queueItem={activeQueue.find(i => i.assignedCameraId === id && i.status === 'PROCESSING')}
+                  isFocused={false}
+                />
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // Normal Grid Layout
   return (
     <div className="h-full flex flex-col">
-      {mode === 'THERMAL' && (
-        <div className="mb-4 bg-purple-900/30 border border-purple-500/50 p-2 rounded text-center text-purple-200 font-mono text-xs shadow-[0_0_10px_rgba(168,85,247,0.2)]">
-          <span className="font-bold">SIMULATED THERMAL STREAM — VIDEO INPUT ACTIVE</span>. Running inference on pre-recorded thermal data.
-        </div>
-      )}
-      {mode === 'DRONE' && (
-        <div className="mb-4 bg-sky-900/30 border border-sky-500/50 p-2 rounded text-center text-sky-200 font-mono text-xs">
-          <span className="font-bold">AERIAL SURVEILLANCE ACTIVE</span>. Processing drone imagery for small object detection.
-        </div>
-      )}
-      
       <div className="flex-1 grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4 auto-rows-fr">
-        {cameras.map(cam => (
+        {slots.map(id => (
           <CameraCard
-            key={cam.id}
-            id={cam.id}
-            name={cam.name}
+            key={id}
+            cameraId={id}
             mode={mode}
-            status="ONLINE"
-            source={`mock://${cam.id}`}
-            labels={cam.labels}
-            stats={cam.stats}
-            alert={cam.alert && mode === 'VISION'}
+            queueItem={activeQueue.find(i => i.assignedCameraId === id && i.status === 'PROCESSING')}
+            isFocused={false}
           />
         ))}
       </div>

@@ -1,106 +1,189 @@
-import React from 'react';
-import { Maximize2, AlertTriangle, Play, Pause, RefreshCw } from 'lucide-react';
+import React, { useRef, useEffect, useState } from 'react';
+import { AlertTriangle, Activity, Trash2 } from 'lucide-react';
+import type { QueueItem, InferenceEvent } from '../contexts/VideoQueueContext';
+import { useVideoQueue } from '../contexts/VideoQueueContext';
+import { InferenceService } from '../services/InferenceService';
 
 interface CameraCardProps {
-  id: string;
-  name: string;
+  cameraId: string;
   mode: 'VISION' | 'THERMAL' | 'DRONE';
-  status: 'ONLINE' | 'OFFLINE';
-  source: string;
-  stats: {
-    fps: number;
-    latency: number;
-    people: number;
-    vehicles?: number;
-    motion: boolean;
-  };
-  labels: string[];
-  alert?: boolean;
+  queueItem?: QueueItem;
+  isFocused: boolean;
 }
 
-const CameraCard: React.FC<CameraCardProps> = ({ id, name, mode, status, stats, labels, alert }) => {
-  // Mock image based on mode and id for demonstration since we don't have real feeds yet
-  const getMockFeed = () => {
+const CameraCard: React.FC<CameraCardProps> = ({ cameraId, mode, queueItem, isFocused }) => {
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const [currentBoxes, setCurrentBoxes] = useState<InferenceEvent['boundingBoxes']>([]);
+  const [localAlert, setLocalAlert] = useState<InferenceEvent | null>(null);
+  const { setActiveAnomalyCameraId, addEvent, isProcessing, updateStatus, removeVideo } = useVideoQueue();
+  const [stats, setStats] = useState({ fps: 0, elapsed: 0 });
+
+  const status = queueItem ? 'PROCESSING' : 'STANDBY';
+  const hasAlert = !!localAlert;
+
+  // Video and Inference Loop
+  useEffect(() => {
+    let animationFrameId: number;
+    let lastInferenceTime = 0;
+    let framesProcessed = 0;
+    const startTime = Date.now();
+
+    const loop = async () => {
+      if (!videoRef.current || !queueItem || !isProcessing) return;
+
+      const now = Date.now();
+      setStats({
+        fps: Math.round((framesProcessed / ((now - startTime) / 1000)) || 0),
+        elapsed: Math.round((now - startTime) / 1000)
+      });
+
+      if (now - lastInferenceTime > 150 && !videoRef.current.paused) {
+        lastInferenceTime = now;
+        framesProcessed++;
+        
+        try {
+          const event = await InferenceService.processFrame(videoRef.current, cameraId, mode);
+          if (event && event.anomalyDetected) {
+            event.sourceFilename = queueItem.filename;
+            setLocalAlert(event);
+            setCurrentBoxes(event.boundingBoxes);
+            addEvent(event);
+            setActiveAnomalyCameraId(cameraId);
+          } else if (Math.random() < 0.1) {
+             // Occasionally clear boxes or keep tracking active to simulate real AI tracking
+             setCurrentBoxes([]);
+          }
+        } catch (e) {
+          console.error("Inference Error", e);
+        }
+      }
+
+      animationFrameId = requestAnimationFrame(loop);
+    };
+
+    if (queueItem && isProcessing) {
+      loop();
+      if (videoRef.current) {
+         videoRef.current.play().catch(e => console.log('Autoplay blocked:', e));
+      }
+    } else {
+      if (videoRef.current) videoRef.current.pause();
+    }
+
+    return () => cancelAnimationFrame(animationFrameId);
+  }, [queueItem, isProcessing, cameraId, mode, setActiveAnomalyCameraId, addEvent]);
+
+  const handleVideoEnded = () => {
+    if (queueItem) {
+      // Re-play it since we loop, no need to set completed
+      // Or if we don't use the loop attribute, we could do video.play()
+    }
+  };
+
+  const getVideoFilter = () => {
     if (mode === 'THERMAL') {
-      return `linear-gradient(45deg, #0f172a, #4c1d95, #be185d, #f59e0b)`; // Thermal-like gradient
+      return 'grayscale(100%) contrast(250%) invert(100%) sepia(80%) hue-rotate(240deg) saturate(300%)';
     }
     if (mode === 'DRONE') {
-      return `linear-gradient(to bottom, #38bdf8, #0ea5e9, #64748b, #334155)`; // Sky-like to ground gradient
+      return 'grayscale(20%) contrast(120%) brightness(1.1)';
     }
-    return `linear-gradient(to bottom right, #1e293b, #0f172a)`; // Default night/dark feed
+    return 'none';
   };
 
   return (
-    <div className={`relative flex flex-col bg-slate-800 rounded-lg overflow-hidden border-2 transition-all duration-300 ${alert ? 'border-red-500 shadow-[0_0_15px_rgba(239,68,68,0.5)]' : 'border-slate-700'}`}>
+    <div className={`relative flex flex-col bg-slate-800 rounded-lg overflow-hidden border-2 transition-all duration-300 h-full ${hasAlert ? 'border-red-500 shadow-[0_0_15px_rgba(239,68,68,0.5)]' : 'border-slate-700'}`}>
       
       {/* Top Overlay */}
-      <div className="absolute top-0 left-0 right-0 p-2 flex justify-between items-start z-10 bg-gradient-to-b from-black/80 to-transparent">
-        <div className="flex flex-col">
+      <div className="absolute top-0 left-0 right-0 p-2 flex justify-between items-start z-20 bg-gradient-to-b from-black/80 via-black/40 to-transparent pointer-events-none">
+        <div className="flex flex-col w-2/3">
           <div className="flex items-center space-x-2">
-            <span className={`w-2 h-2 rounded-full ${status === 'ONLINE' ? 'bg-green-500 animate-pulse' : 'bg-red-500'}`}></span>
-            <span className="font-mono text-xs font-bold text-slate-200">{id}</span>
-          </div>
-          <span className="text-[10px] text-slate-400 font-semibold tracking-wider">{name}</span>
-        </div>
-        <div className="flex space-x-1">
-          {labels.map((label, idx) => (
-            <span key={idx} className="bg-slate-900/60 border border-slate-600 text-slate-300 text-[9px] px-1.5 py-0.5 rounded font-mono uppercase">
-              {label}
+            <span className={`w-2 h-2 rounded-full ${status === 'PROCESSING' ? 'bg-blue-500 animate-pulse' : 'bg-slate-500'}`}></span>
+            <span className="font-mono text-xs font-bold text-slate-200 flex items-center">
+              {cameraId} 
+              {queueItem && (
+                 <button onClick={() => removeVideo(queueItem.id, mode)} className="ml-3 p-1 bg-red-900/50 hover:bg-red-600 rounded text-slate-300 hover:text-white pointer-events-auto transition-colors" title="Remove Video">
+                    <Trash2 className="w-3 h-3" />
+                 </button>
+              )}
             </span>
-          ))}
-          {alert && (
-            <span className="bg-red-500/80 text-white text-[9px] px-1.5 py-0.5 rounded font-mono flex items-center">
-              <AlertTriangle className="w-2.5 h-2.5 mr-0.5" /> BREACH
+          </div>
+          <span className="text-[10px] text-slate-400 font-semibold tracking-wider truncate">
+            {queueItem ? queueItem.filename : 'STANDBY'}
+          </span>
+        </div>
+        <div className="flex flex-col items-end w-1/3">
+          {hasAlert && localAlert && (
+            <span className="bg-red-600/90 border border-red-500 text-white text-[10px] px-2 py-1 rounded font-mono flex flex-col items-end text-right font-bold shadow-lg max-w-full pointer-events-auto">
+              <div className="flex items-center text-xs mb-0.5"><AlertTriangle className="w-3 h-3 mr-1" /> {localAlert.anomalyType.toUpperCase()}</div>
+              <div className="text-[9px] text-red-100 font-normal leading-tight">{localAlert.message.toUpperCase()}</div>
             </span>
           )}
         </div>
       </div>
 
       {/* Video Feed Area */}
-      <div 
-        className="flex-1 w-full bg-slate-900 relative group"
-        style={{ background: getMockFeed() }}
-      >
-        {/* Placeholder for actual canvas/video element */}
-        <div className="absolute inset-0 flex items-center justify-center opacity-30">
-          <span className="font-mono text-4xl font-bold tracking-widest mix-blend-overlay">DRISHTI AI</span>
-        </div>
-        
-        {/* Simulated Bounding Boxes (for visual effect only) */}
-        {status === 'ONLINE' && !alert && (
-          <div className="absolute top-1/4 left-1/3 w-16 h-32 border border-green-500 bg-green-500/10">
-            <span className="absolute -top-4 left-0 text-[8px] bg-green-500 text-black px-1 font-mono">PERSON 0.92</span>
+      <div className="flex-1 w-full bg-black relative overflow-hidden flex items-center justify-center">
+        {queueItem ? (
+          <>
+            <video 
+              ref={videoRef}
+              src={queueItem.url} 
+              muted 
+              playsInline
+              loop
+              onEnded={handleVideoEnded}
+              className="absolute inset-0 w-full h-full object-contain"
+              style={{ filter: getVideoFilter() }}
+            />
+            {/* Draw Bounding Boxes */}
+            <div className="absolute inset-0 pointer-events-none z-10">
+              {currentBoxes.map((box, i) => {
+                const top = `${box.y * 100}%`;
+                const left = `${box.x * 100}%`;
+                const width = `${box.width * 100}%`;
+                const height = `${box.height * 100}%`;
+                const isCritical = localAlert?.severity === 'critical';
+                
+                return (
+                  <div 
+                    key={i}
+                    className={`absolute border-2 ${isCritical ? 'border-red-500 bg-red-500/20' : 'border-orange-500 bg-orange-500/20'}`}
+                    style={{ top, left, width, height }}
+                  >
+                    <span className={`absolute -top-5 left-0 text-[10px] ${isCritical ? 'bg-red-500' : 'bg-orange-500'} text-white font-bold px-1 font-mono whitespace-nowrap shadow-sm`}>
+                      {box.label.toUpperCase()} {(box.confidence * 100).toFixed(0)}%
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
+            
+            {/* Drone Crosshair */}
+            {mode === 'DRONE' && (
+              <div className="absolute inset-0 pointer-events-none flex items-center justify-center opacity-40">
+                <div className="w-16 h-16 border border-white/50 rounded-full"></div>
+                <div className="absolute w-32 h-[1px] bg-white/50"></div>
+                <div className="absolute w-[1px] h-32 bg-white/50"></div>
+              </div>
+            )}
+          </>
+        ) : (
+          <div className="flex flex-col items-center justify-center text-slate-600 opacity-50">
+            <Activity className="w-8 h-8 mb-2" />
+            <span className="font-mono text-xs font-bold tracking-widest">NO SIGNAL</span>
           </div>
         )}
-        {alert && (
-          <div className="absolute top-1/2 left-1/2 w-20 h-40 border-2 border-red-500 bg-red-500/20 transform -translate-x-1/2 -translate-y-1/2">
-            <span className="absolute -top-4 left-0 text-[8px] bg-red-500 text-white px-1 font-mono font-bold">INTRUDER 0.98</span>
-          </div>
-        )}
-
-        {/* Hover Controls */}
-        <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity duration-200 flex items-center justify-center space-x-4">
-          <button className="p-2 bg-slate-800 rounded-full text-slate-200 hover:text-white hover:bg-slate-700 transition"><Play className="w-4 h-4" /></button>
-          <button className="p-2 bg-slate-800 rounded-full text-slate-200 hover:text-white hover:bg-slate-700 transition"><Pause className="w-4 h-4" /></button>
-          <button className="p-2 bg-slate-800 rounded-full text-slate-200 hover:text-white hover:bg-slate-700 transition"><RefreshCw className="w-4 h-4" /></button>
-          <button className="p-2 bg-slate-800 rounded-full text-slate-200 hover:text-white hover:bg-slate-700 transition"><Maximize2 className="w-4 h-4" /></button>
-        </div>
       </div>
 
       {/* Bottom Stats Overlay */}
-      <div className="bg-slate-900 border-t border-slate-700 p-2 flex justify-between items-center text-[10px] font-mono text-slate-400">
+      <div className="bg-slate-900 border-t border-slate-700 p-2 flex justify-between items-center text-[10px] font-mono text-slate-400 z-20 shrink-0">
         <div className="flex space-x-3">
           <span>FPS: <span className="text-slate-200">{stats.fps}</span></span>
-          <span>LAT: <span className="text-slate-200">{stats.latency}ms</span></span>
+          <span>TIME: <span className="text-slate-200">{stats.elapsed}s</span></span>
         </div>
         <div className="flex space-x-3">
-          <span className={stats.motion ? 'text-amber-400' : ''}>MOT: {stats.motion ? 'YES' : 'NO'}</span>
-          <span>PPL: <span className="text-slate-200">{stats.people}</span></span>
-          {stats.vehicles !== undefined && <span>VEH: <span className="text-slate-200">{stats.vehicles}</span></span>}
+           <span className={`${hasAlert ? 'text-red-400 font-bold' : ''}`}>{hasAlert ? 'ANOMALY DETECTED' : 'NORMAL'}</span>
         </div>
-        <button className="bg-slate-800 hover:bg-slate-700 text-slate-300 px-2 py-1 rounded border border-slate-600 transition-colors">
-          INSPECT
-        </button>
       </div>
     </div>
   );
