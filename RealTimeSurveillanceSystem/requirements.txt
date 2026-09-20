@@ -1,0 +1,14 @@
+opencv-python
+ultralytics
+numpy
+mediapipe
+streamlit
+sqlalchemy
+pyyaml
+python-dotenv
+twilio
+requests
+pandas
+pytest
+pytest-cov
+ruff

@@ -1,0 +1,4 @@
+model: yolov8n.pt
+epochs: 40
+imgsz: 640
+data: coco128_enhanced.yaml

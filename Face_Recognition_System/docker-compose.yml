@@ -1,0 +1,44 @@
+# Extension fields are only recognised at the top level. Nested under
+# `services:` this anchor was parsed as a real service and compose built a
+# stray face_recognition-x-base-1 container from it.
+x-base: &base
+  build: .
+  # Application settings live in config.toml, not here — it is bind-mounted
+  # below, so editing it takes effect on the next container start with no
+  # rebuild. Only X11 plumbing stays in the environment. (Settings CAN still be
+  # overridden per-service with USE_GPU / SPOOF_THRESH / ORT_THREADS /
+  # SPOOF_MODEL_DIR / CAPTURE_DIR / DB_PATH, which beat the file — handy for a
+  # one-off, but the file is the place to make a change stick.)
+  environment:
+    - DISPLAY=${DISPLAY}
+    - QT_X11_NO_MITSHM=1
+  volumes:
+    - ./Dataset:/app/Dataset
+    - ./config.toml:/app/config.toml:ro
+    - /tmp/.X11-unix:/tmp/.X11-unix:rw
+  devices:
+    - /dev/video0:/dev/video0
+  # network_mode: host    # uncomment for RTSP on host LAN
+
+services:
+
+  enroll:
+    <<: *base
+    container_name: face-enroll
+    stdin_open: true
+    tty: true
+    command: python enroll_new_faces.py
+
+  recognize:
+    <<: *base
+    container_name: face-recognize
+    restart: unless-stopped
+    command: python face_recognition.py
+
+  web:
+    <<: *base
+    container_name: face-web
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    command: uvicorn app:app --host 0.0.0.0 --port 8000

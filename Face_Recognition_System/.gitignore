@@ -1,0 +1,16 @@
+# Model weights — fetched on first run by src/antispoof.ensure_models() and by
+# insightface itself. Never commit these: they are large, and the enrolled
+# faces in Dataset/ are biometric data.
+models/*.onnx
+Dataset/
+
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+myenv/
+.idea/
+.vscode/
+.DS_Store
+.claude/
+CLAUDE.md
