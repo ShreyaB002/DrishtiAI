@@ -1,0 +1,9 @@
+fastapi
+uvicorn
+pydantic
+pydantic-settings
+websockets
+opencv-python-headless
+python-multipart
+sqlalchemy
+python-dotenv
