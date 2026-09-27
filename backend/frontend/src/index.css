@@ -1,10 +1,6 @@
 @import "tailwindcss";
 
-@layer base {
-  body {
-    @apply bg-slate-900 text-slate-100 font-sans antialiased m-0 p-0 overflow-x-hidden;
-  }
-}
+
 
 .indian-gov-gradient {
   background: linear-gradient(90deg, #FF9933 0%, #FFFFFF 50%, #138808 100%);
@@ -16,12 +12,12 @@
   height: 6px;
 }
 ::-webkit-scrollbar-track {
-  background: rgba(15, 23, 42, 0.8);
+  background: rgba(226, 232, 240, 0.8);
 }
 ::-webkit-scrollbar-thumb {
-  background: #334155;
+  background: #cbd5e1;
   border-radius: 3px;
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: #475569;
+  background: #94a3b8;
 }

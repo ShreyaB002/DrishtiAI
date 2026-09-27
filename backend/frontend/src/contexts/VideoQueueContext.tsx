@@ -1,11 +1,11 @@
-import React, { createContext, useContext, useState, useEffect } from 'react';
+import React, { createContext, useContext, useState } from 'react';
 import type { ReactNode } from 'react';
 
 export type VideoStatus = 'WAITING' | 'PROCESSING' | 'COMPLETED' | 'SKIPPED' | 'FAILED';
 
 export interface QueueItem {
   id: string;
-  file: File;
+  file?: File;
   url: string;
   filename: string;
   size: number;
@@ -61,6 +61,7 @@ interface VideoQueueContextProps {
   addEvent: (event: InferenceEvent) => void;
   resolveEvent: (eventId: string) => void;
   processNext: () => void;
+  addCameraUrls: (urls: string[]) => void;
 }
 
 const VideoQueueContext = createContext<VideoQueueContextProps | undefined>(undefined);
@@ -106,11 +107,45 @@ export const VideoQueueProvider: React.FC<{ children: ReactNode }> = ({ children
     setQueues(prev => {
       const q = prev[mode];
       const item = q.find(i => i.id === id);
-      if (item && item.url) URL.revokeObjectURL(item.url); // cleanup
+      if (item && item.file && item.url) URL.revokeObjectURL(item.url); // cleanup
       
       const newQ = q.filter(i => i.id !== id);
       return { ...prev, [mode]: newQ };
     });
+  };
+
+  const addCameraUrls = (urls: string[]) => {
+    setQueues(prev => {
+      const currentQueue = prev[activeMode];
+      const newItems = urls.map((url, index) => {
+        const globalIndex = currentQueue.length + index;
+        const cameraId = `${getPrefix(activeMode)}-0${(globalIndex % 6) + 1}`;
+        let finalUrl = url.trim();
+        // Auto-append /video for bare IP:PORT links typical of IP Webcam apps
+        if (/^https?:\/\/[0-9\.]+:\d+\/?$/.test(finalUrl)) {
+          finalUrl = finalUrl.endsWith('/') ? finalUrl + 'video' : finalUrl + '/video';
+        }
+        // Proxy external streams to bypass CORS using Vite's proxy
+        if (finalUrl.includes('172.20.10.2:8080')) {
+           finalUrl = finalUrl.replace('http://172.20.10.2:8080', '/proxy-video');
+        } else if (finalUrl.startsWith('http') && !finalUrl.includes('localhost') && !finalUrl.includes('127.0.0.1')) {
+           finalUrl = `http://localhost:8000/proxy-stream?url=${encodeURIComponent(finalUrl)}`;
+        }
+
+        return {
+          id: Math.random().toString(36).substring(7),
+          url: finalUrl,
+          filename: finalUrl,
+          size: 0,
+          mode: activeMode,
+          status: 'PROCESSING' as VideoStatus,
+          anomalyCount: 0,
+          assignedCameraId: cameraId
+        };
+      });
+      return { ...prev, [activeMode]: [...currentQueue, ...newItems] };
+    });
+    setIsProcessing(true);
   };
 
   const updateStatus = (id: string, mode: Mode, status: VideoStatus) => {
@@ -129,7 +164,9 @@ export const VideoQueueProvider: React.FC<{ children: ReactNode }> = ({ children
 
   const clearQueue = (mode: Mode) => {
     setQueues(prev => {
-      prev[mode].forEach(item => URL.revokeObjectURL(item.url));
+      prev[mode].forEach(item => {
+         if (item.file) URL.revokeObjectURL(item.url);
+      });
       return { ...prev, [mode]: [] };
     });
     if (activeMode === mode) {
@@ -153,7 +190,8 @@ export const VideoQueueProvider: React.FC<{ children: ReactNode }> = ({ children
     <VideoQueueContext.Provider value={{
       queues, activeMode, setActiveMode, addVideos, removeVideo, updateStatus, incrementAnomaly, clearQueue,
       isProcessing, setIsProcessing, currentProcessingId: null, setCurrentProcessingId: () => {},
-      activeAnomalyCameraId, setActiveAnomalyCameraId, events, addEvent, resolveEvent, processNext
+      activeAnomalyCameraId, setActiveAnomalyCameraId, events, addEvent, resolveEvent, processNext,
+      addCameraUrls
     }}>
       {children}
     </VideoQueueContext.Provider>

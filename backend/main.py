@@ -20,6 +20,23 @@ app.add_middleware(
 
 app.include_router(router)
 
+from api.auth import router as auth_router
+from api.blockchain import router as blockchain_router
+from api.devices import router as devices_router
+from api.evidence import router as evidence_router
+from api.security import router as security_router
+from api.models import router as models_router
+
+app.include_router(auth_router, prefix="/api/auth", tags=["Auth"])
+app.include_router(blockchain_router, prefix="/api/blockchain", tags=["Blockchain"])
+app.include_router(devices_router, prefix="/api/devices", tags=["Devices"])
+app.include_router(evidence_router, prefix="/api/evidence", tags=["Evidence"])
+app.include_router(security_router, prefix="/api/security", tags=["Security"])
+app.include_router(models_router, prefix="/api/models", tags=["Models"])
+
+# Ensure DB is initialized
+from services.db_manager import db_manager
+
 from services.source_manager import SourceManager
 from services.event_store import EventStore
 from services.event_engine import EventEngine

@@ -27,7 +27,7 @@ const CameraGrid: React.FC<CameraGridProps> = ({ mode }) => {
       <div className="h-full flex flex-col relative">
         <button 
           onClick={() => setActiveAnomalyCameraId(null)}
-          className="absolute top-2 right-2 z-50 bg-slate-800 hover:bg-slate-700 text-white px-3 py-1.5 rounded border border-slate-600 flex items-center shadow-lg transition-colors text-sm font-semibold"
+          className="absolute top-2 right-2 z-50 bg-white hover:bg-gray-100 text-slate-800 px-3 py-1.5 rounded border border-gray-300 flex items-center shadow transition-colors text-sm font-semibold"
         >
           <LayoutGrid className="w-4 h-4 mr-2" /> RETURN TO GRID
         </button>

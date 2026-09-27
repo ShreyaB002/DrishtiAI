@@ -5,10 +5,17 @@ import App from './App.tsx'
 
 import { VideoQueueProvider } from './contexts/VideoQueueContext.tsx'
 
+import { BrowserRouter } from 'react-router-dom'
+import { AuthProvider } from './contexts/AuthContext.tsx'
+
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
-    <VideoQueueProvider>
-      <App />
-    </VideoQueueProvider>
+    <BrowserRouter>
+      <AuthProvider>
+        <VideoQueueProvider>
+          <App />
+        </VideoQueueProvider>
+      </AuthProvider>
+    </BrowserRouter>
   </StrictMode>,
 )
